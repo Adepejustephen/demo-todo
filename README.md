@@ -37,8 +37,14 @@ existing list, and `today` / `tonight` / `tomorrow` / a weekday name / `next wee
 ## Around the app
 
 - **Views** — Today (includes anything overdue), Upcoming, Everything, Done, plus your own lists.
+- **Tabs** — every view draws as a **List** or a **Calendar**.
+- **Calendar** — a month of due dates with the day's tasks underneath. Pick a day and new
+  tasks land on it; drag a task onto another day to reschedule it, or drop it in the
+  Unscheduled tray to clear its date. Colours follow priority, and anything late turns red.
+  On phones each day shows dots instead of labels, and tapping a day lists its tasks.
 - **Rows** — tick to complete, double-click to rename, drag to reorder, cycle P1–P3, delete.
-- **Keyboard** — `n` focuses quick add, `/` focuses search, `Esc` cancels a rename.
+- **Keyboard** — `n` focuses quick add, `/` focuses search, `l` and `c` switch tabs,
+  `Esc` cancels a rename.
 - **Theme** — follows the OS by default; the Theme button overrides it for the session.
 
 ## Layout
@@ -50,7 +56,7 @@ src/
   index.css            colour tokens (light + dark), fonts, keyframes
   components/          Composer, Sidebar, TaskRow, Check, DueChip, EmptyState, ThemeToggle
   lib/
-    dates.js           local-calendar date maths and labels
+    dates.js           local-calendar date maths, labels and the month grid
     parse.js           the quick-add parser
     parse.test.js      tests for both
     storage.js         localStorage load/save (guarded) and the seed tasks

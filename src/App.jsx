@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import CalendarView from './components/CalendarView.jsx'
 import Composer from './components/Composer.jsx'
 import EmptyState from './components/EmptyState.jsx'
 import Sidebar from './components/Sidebar.jsx'
+import Tabs from './components/Tabs.jsx'
 import TaskRow from './components/TaskRow.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
-import { selectVisible, useTasks } from './useTasks.js'
+import { dueLabel, fromISO, todayISO } from './lib/dates.js'
+import { selectForCalendar, selectVisible, useTasks } from './useTasks.js'
 
 const EMPTY = {
   today: ['Nothing due today', 'Add something above, or pull one forward from Upcoming.'],
@@ -12,6 +15,11 @@ const EMPTY = {
   done: ['Nothing finished yet', 'Completed tasks collect here so you can look back.'],
   all: ['Your list is empty', 'Type a task above and press Enter.'],
 }
+
+const MODES = [
+  { id: 'list', label: 'List' },
+  { id: 'calendar', label: 'Calendar' },
+]
 
 function greeting() {
   const h = new Date().getHours()
@@ -31,19 +39,22 @@ export default function App() {
     removeTask,
     renameTask,
     cyclePriority,
+    rescheduleTask,
     clearDone,
     moveTask,
     addList,
   } = useTasks()
 
   const [view, setView] = useState('today')
+  const [mode, setMode] = useState('list')
+  const [selectedDay, setSelectedDay] = useState(todayISO)
   const [query, setQuery] = useState('')
   const [showDone, setShowDone] = useState(true)
   const [dragId, setDragId] = useState(null)
   const addRef = useRef(null)
   const searchRef = useRef(null)
 
-  // n adds, / searches — but never while the caret is already in a field.
+  // n adds, / searches, c and l switch tabs — but never while the caret is in a field.
   useEffect(() => {
     function onKey(e) {
       const tag = (e.target.tagName || '').toLowerCase()
@@ -56,6 +67,8 @@ export default function App() {
         e.preventDefault()
         addRef.current?.focus()
       }
+      if (e.key === 'c') setMode('calendar')
+      if (e.key === 'l') setMode('list')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -69,6 +82,11 @@ export default function App() {
   ]
 
   const visible = useMemo(() => selectVisible(tasks, view, query, showDone), [tasks, view, query, showDone])
+  const plotted = useMemo(
+    () => selectForCalendar(tasks, lists, view, query, showDone),
+    [tasks, lists, view, query, showDone],
+  )
+  const dayTasks = useMemo(() => plotted.filter((t) => t.due === selectedDay), [plotted, selectedDay])
 
   const heading = views.find((v) => v.id === view)?.label ?? lists.find((l) => l.id === view)?.name ?? 'Today'
   const [emptyTitle, emptyHint] = EMPTY[view] ?? [
@@ -76,6 +94,17 @@ export default function App() {
     'Add a task while this list is open and it lands here.',
   ]
   const isSmartView = view === 'done' || view === 'today' || view === 'upcoming'
+
+  const rowProps = {
+    lists,
+    onToggle: toggleTask,
+    onRemove: removeTask,
+    onRename: renameTask,
+    onCyclePriority: cyclePriority,
+    dragId,
+    setDragId,
+    onDrop: (targetId) => moveTask(dragId, targetId),
+  }
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -92,26 +121,23 @@ export default function App() {
       </header>
 
       <div className="flex flex-col gap-5 md:flex-row">
-        <Sidebar
-          views={views}
-          lists={lists}
-          counts={counts}
-          view={view}
-          setView={setView}
-          onAddList={addList}
-        />
+        <Sidebar views={views} lists={lists} counts={counts} view={view} setView={setView} onAddList={addList} />
 
         <main className="flex min-w-0 flex-1 flex-col gap-4">
           <Composer
             inputRef={addRef}
             onAdd={(text, due) =>
-              addTask(text, { due, fallbackList: lists.some((l) => l.id === view) ? view : 'inbox' })
+              addTask(text, {
+                due: due || (mode === 'calendar' ? selectedDay : null),
+                fallbackList: lists.some((l) => l.id === view) ? view : 'inbox',
+              })
             }
           />
 
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="disp text-[17px] font-semibold">{heading}</h2>
-            <span className="mono text-[12px] text-faint">{visible.length}</span>
+            <span className="mono text-[12px] text-faint">{mode === 'list' ? visible.length : plotted.length}</span>
+            <Tabs tabs={MODES} value={mode} onChange={setMode} />
 
             <div className="ml-auto flex items-center gap-2">
               <input
@@ -122,7 +148,7 @@ export default function App() {
                 aria-label="Search tasks"
                 className="w-32 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px] placeholder:text-faint focus:border-accent focus:outline-none sm:w-48"
               />
-              {!isSmartView && (
+              {mode === 'list' && !isSmartView && (
                 <button
                   type="button"
                   onClick={() => setShowDone((v) => !v)}
@@ -131,7 +157,7 @@ export default function App() {
                   {showDone ? 'Hide done' : 'Show done'}
                 </button>
               )}
-              {view === 'done' && counts.done > 0 && (
+              {mode === 'list' && view === 'done' && counts.done > 0 && (
                 <button
                   type="button"
                   onClick={clearDone}
@@ -143,36 +169,61 @@ export default function App() {
             </div>
           </div>
 
-          <section className="overflow-hidden rounded-xl border border-line">
-            {visible.length ? (
-              <ul>
-                {visible.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    lists={lists}
-                    onToggle={toggleTask}
-                    onRemove={removeTask}
-                    onRename={renameTask}
-                    onCyclePriority={cyclePriority}
-                    dragId={dragId}
-                    setDragId={setDragId}
-                    onDrop={(targetId) => moveTask(dragId, targetId)}
+          {mode === 'list' ? (
+            <section className="overflow-hidden rounded-xl border border-line">
+              {visible.length ? (
+                <ul>
+                  {visible.map((task) => (
+                    <TaskRow key={task.id} task={task} {...rowProps} />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState title={emptyTitle} hint={emptyHint} />
+              )}
+            </section>
+          ) : (
+            <>
+              <CalendarView
+                tasks={plotted}
+                selected={selectedDay}
+                onSelectDay={setSelectedDay}
+                onReschedule={rescheduleTask}
+              />
+
+              <section className="overflow-hidden rounded-xl border border-line">
+                <div className="flex flex-wrap items-baseline gap-2 border-b border-line bg-panel px-4 py-2.5">
+                  <h3 className="disp text-[14px] font-semibold">{dueLabel(selectedDay)}</h3>
+                  <span className="mono text-[12px] text-faint">
+                    {fromISO(selectedDay).toLocaleDateString(undefined, {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                  </span>
+                </div>
+                {dayTasks.length ? (
+                  <ul>
+                    {dayTasks.map((task) => (
+                      <TaskRow key={task.id} task={task} {...rowProps} />
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyState
+                    title="Nothing on this day"
+                    hint="Add a task while this day is selected, or drag one onto it from another day."
                   />
-                ))}
-              </ul>
-            ) : (
-              <EmptyState title={emptyTitle} hint={emptyHint} />
-            )}
-          </section>
+                )}
+              </section>
+            </>
+          )}
 
           <p className="text-[12px] leading-relaxed text-faint">
             Quick add understands <span className="mono">tomorrow</span>, <span className="mono">friday</span>,{' '}
             <span className="mono">next week</span>, <span className="mono">in 3 days</span>,{' '}
             <span className="mono">!1</span>–<span className="mono">!3</span> for priority and{' '}
-            <span className="mono">#list</span> to file it. Drag rows to reorder, double-click to rename. Press{' '}
-            <span className="mono">n</span> to add, <span className="mono">/</span> to search. Everything is saved
-            in this browser.
+            <span className="mono">#list</span> to file it. Drag rows to reorder, or drag a task onto another day
+            in Calendar to move it. Press <span className="mono">n</span> to add, <span className="mono">/</span> to
+            search, <span className="mono">l</span> and <span className="mono">c</span> to switch tabs.
           </p>
         </main>
       </div>

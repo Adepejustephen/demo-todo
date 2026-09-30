@@ -57,3 +57,42 @@ export function dueLabel(dateStr) {
     day: 'numeric',
   })
 }
+
+export function fromISO(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** Month cursors are plain { y, m } pairs; m is 0-based. */
+export function addMonths({ y, m }, n) {
+  const d = new Date(y, m + n, 1)
+  return { y: d.getFullYear(), m: d.getMonth() }
+}
+
+export function thisMonth() {
+  const d = new Date()
+  return { y: d.getFullYear(), m: d.getMonth() }
+}
+
+export function monthLabel({ y, m }) {
+  return new Date(y, m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
+
+export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+/**
+ * A Monday-start grid of whole weeks covering the month, including the
+ * neighbouring days that fill the first and last rows. A trailing row that
+ * falls entirely outside the month is dropped, so short months don't leave
+ * an empty band.
+ */
+export function monthGrid({ y, m }) {
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7
+  const cells = []
+  for (let i = 0; i < 42; i += 1) {
+    const d = new Date(y, m, 1 - offset + i)
+    cells.push({ iso: iso(d), day: d.getDate(), inMonth: d.getMonth() === m && d.getFullYear() === y })
+  }
+  const lastWeek = cells.slice(35)
+  return lastWeek.some((c) => c.inMonth) ? cells : cells.slice(0, 35)
+}

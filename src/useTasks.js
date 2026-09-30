@@ -59,6 +59,12 @@ export function useTasks() {
     [patch],
   )
 
+  /** Moves a task to another day, or clears its date when due is null. */
+  const rescheduleTask = useCallback(
+    (id, due) => patch((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, due } : t)) })),
+    [patch],
+  )
+
   const clearDone = useCallback(() => patch((s) => ({ tasks: s.tasks.filter((t) => !t.done) })), [patch])
 
   const moveTask = useCallback(
@@ -124,6 +130,7 @@ export function useTasks() {
     removeTask,
     renameTask,
     cyclePriority,
+    rescheduleTask,
     clearDone,
     moveTask,
     addList,
@@ -142,4 +149,17 @@ export function selectVisible(tasks, view, query, showDone) {
     return t.list === view && (showDone || !t.done)
   })
   return [...matches].sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1))
+}
+
+/** Tasks the calendar should plot: filtered by the chosen list and the search box,
+ *  but never by the date-based smart views — the month itself is the date filter. */
+export function selectForCalendar(tasks, lists, view, query, showDone) {
+  const q = query.trim().toLowerCase()
+  return tasks.filter((t) => {
+    if (q && !t.title.toLowerCase().includes(q)) return false
+    if (!showDone && t.done) return false
+    if (lists.some((l) => l.id === view)) return t.list === view
+    if (view === 'done') return t.done
+    return true
+  })
 }
